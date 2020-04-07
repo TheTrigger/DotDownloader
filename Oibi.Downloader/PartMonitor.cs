@@ -10,7 +10,7 @@ namespace Oibi.Download
     /// <summary>
     /// Part downloader
     /// </summary>
-    internal class PartMonitor // TODO: IDisposable?
+    internal class PartMonitor : IDisposable
     {
         private readonly CancellationTokenSource _cancellationTokenSource;
 
@@ -95,7 +95,6 @@ namespace Oibi.Download
                 // lazy cause fileStream have to free resource, so you have to implement IDisposable
                 Progress = (1d * fileStream.Position / fileStream.Length);
 
-                //_lastChunk = DateTime.Now;
                 //stopWatch.Stop();
                 //if (stopWatch.ElapsedMilliseconds > 0)
                 // _speed?.Report(bytesRead * 8 / stopWatch.ElapsedMilliseconds);
@@ -110,6 +109,11 @@ namespace Oibi.Download
         {
             if (!_cancellationTokenSource.IsCancellationRequested)
                 _cancellationTokenSource.Cancel();
+        }
+
+        public void Dispose()
+        {
+            _cancellationTokenSource.Dispose();
         }
     }
 }

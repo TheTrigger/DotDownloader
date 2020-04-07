@@ -132,7 +132,9 @@ namespace Oibi.Download
             {
                 // TODO: valuta cosa fare
                 if (files.Length > 0)
+                {
                     throw new NotSupportedException($"Accept-Ranges not supported but found multiple parts on disk ({files.Length})");
+                }
 
                 AsMultiPart = 1;
                 return;
@@ -150,17 +152,21 @@ namespace Oibi.Download
             _downloadMonitors = new List<PartMonitor>(AsMultiPart);
 
             if (_contentLength is null)
+            {
                 throw new NotImplementedException("What to do? no content length");
+            }
 
             // do not split under 1mb
             if (_contentLength < 1024 * 1024)
+            {
                 AsMultiPart = 1;
+            }
 
             var singleSize = (_contentLength / AsMultiPart).Value;
             var rest = (_contentLength % AsMultiPart).Value;
 
             if (singleSize == 0)
-                throw new Exception($"{nameof(_contentLength)} cannot be zero");
+                throw new ArgumentOutOfRangeException($"{nameof(_contentLength)} cannot be zero");
 
             for (int i = 1; i <= AsMultiPart; i++)
             {
@@ -208,19 +214,15 @@ namespace Oibi.Download
             Task.WaitAll(_downloadMonitors.Select(s => s.CurrentTask).ToArray());
 
             if (!_downloadMonitors.All(t => t.CurrentTask.IsCompletedSuccessfully))
-                throw new Exception("Some task failed :)");
+                throw new AggregateException(_downloadMonitors.Select(s => s.CurrentTask.Exception));
 
             await JoinParts();
         }
 
         public void Abort()
         {
-            Console.WriteLine("aborting...");
             foreach (var m in _downloadMonitors)
-            {
-                Console.WriteLine($"{m._settings.File.Name} aborting...");
                 m.Abort();
-            }
         }
 
         /// <summary>
