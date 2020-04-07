@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>netstandard2.1</TargetFramework>
+    <RootNamespace>Oibi.Download</RootNamespace>
+    <AssemblyName>Oibi.Downloader</AssemblyName>
+    <Version>0.0.1-alpha</Version>
+    <Copyright>f.fabrizi91@gmail.com</Copyright>
+    <Company>oibi.dev</Company>
+    <Authors>f.fabrizi91@gmail.com</Authors>
+    <Description>Stateless download manager</Description>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/TheTrigger/DotDownloader</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/TheTrigger/DotDownloader</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageTags>download</PackageTags>
+    <PackageReleaseNotes>initial beta</PackageReleaseNotes>
+  </PropertyGroup>
+
+</Project>
