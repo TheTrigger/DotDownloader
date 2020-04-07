@@ -206,7 +206,7 @@ namespace Oibi.Download
 
         public async Task DownloadAsync()
         {
-            await VerifyAsync();
+            await VerifyAsync().ConfigureAwait(false);
 
             foreach (var m in _downloadMonitors)
                 _ = m.StartDownloadAsync().ConfigureAwait(false);
