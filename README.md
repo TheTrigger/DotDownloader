@@ -1,19 +1,28 @@
 # Dot Downloader
 
 [![Codacy Badge](https://api.codacy.com/project/badge/Grade/e7cbcd57f92a485bb26be7788cc9f2c2)](https://app.codacy.com/manual/TheTrigger/DotDownloader?utm_source=github.com&utm_medium=referral&utm_content=TheTrigger/DotDownloader&utm_campaign=Badge_Grade_Settings)
+[![Nuget (with prereleases)](https://img.shields.io/nuget/vpre/Oibi.Downloader)](https://www.nuget.org/packages/Oibi.Downloader/)
 
-A small stateless utility to download remote files with no external dependencies
+
+A small stateless utility to download remote files without external dependencies
 
 ## Features
 
 - [x] concurrent split download
 - [x] resume downloads
-- [x] progress monitor
-- [ ] speed monitor
+- [x] progress
+- [ ] speed meter
 - [ ] pause/resume
 - [x] abort (`CancellationToken`)
 - [x] stateless
 - [ ] proxy pool
+- [ ] throttling
+
+
+## TODO list
+- [ ] more refactoring
+- [ ] implement missing features
+- [ ] xunit tests 🤔
 
 ## MaybeBoard: Download manager
 
@@ -23,6 +32,11 @@ A small stateless utility to download remote files with no external dependencies
 NB. disk's space is preallocated
 
 ## Getting started
+
+Install Package
+```ps
+Install-Package Oibi.Downloader
+```
 
 ```Csharp
 using Oibi.Download;
