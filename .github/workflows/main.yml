@@ -1,0 +1,27 @@
+name: NuGet Generation
+
+on:
+  push:
+    branches:
+      - master
+
+jobs:
+  build:
+    runs-on: windows-latest
+    name: Update NuGet
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@master
+
+      - name: Build solution and generate NuGet package
+        run: |
+          cd Oibi.Downloader
+          dotnet pack -p:IncludeSymbols=true -p:SymbolPackageFormat=snupkg -c Release -o \out
+      - name: Install NuGet client
+        uses: warrenbuckley/Setup-Nuget@v1
+
+      - name: Set NuGet apiKey
+        run: nuget setApiKey ${{secrets.NUGET_APIKEY}}
+
+      - name: Push generated package to the registry
+        run: nuget push \out\*.nupkg -Source https://api.nuget.org/v3/index.json -SkipDuplicate
