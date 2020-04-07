@@ -1,5 +1,7 @@
 # Dot Downloader
 
+[![Codacy Badge](https://api.codacy.com/project/badge/Grade/e7cbcd57f92a485bb26be7788cc9f2c2)](https://app.codacy.com/manual/TheTrigger/DotDownloader?utm_source=github.com&utm_medium=referral&utm_content=TheTrigger/DotDownloader&utm_campaign=Badge_Grade_Settings)
+
 A small stateless utility to download remote files with no external dependencies
 
 ## Features
