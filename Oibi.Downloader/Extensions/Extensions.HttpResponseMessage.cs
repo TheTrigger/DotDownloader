@@ -23,7 +23,7 @@ namespace Oibi.Download.Extensions
 
         public static long? ContentLenght(this HttpResponseMessage httpResponseMessage)
         {
-            // TODO: handle no content lenght declared - keep nullable?
+            // TODO: handle no declared content length
             return httpResponseMessage?.Content.Headers.ContentLength;
         }
     }

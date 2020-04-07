@@ -22,7 +22,7 @@ namespace Oibi.Download.Extensions
             {
                 int bytesToRead = (int)(fileStream.Length <= FileStreamBufferLenght ? fileStream.Length : FileStreamBufferLenght);
 
-                // TODO: ottimizza -> sovrapposizione lettura verso l'ultimo blocco - Math.Max lazy
+                // TODO: ottimizza -> sovrapposizione lettura verso l'ultimo blocco ... Math.Max==lazy
                 fileStream.Position = Math.Max(default, fileStream.Length - totalBytesRead - bytesToRead);
 
                 var bytesRead = await fileStream.ReadAsync(buffer, 0, bytesToRead);

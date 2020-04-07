@@ -150,7 +150,7 @@ namespace Oibi.Download
             _downloadMonitors = new List<PartMonitor>(AsMultiPart);
 
             if (_contentLength is null)
-                throw new NotImplementedException("What to do? no content lenght");
+                throw new NotImplementedException("What to do? no content length");
 
             // do not split under 1mb
             if (_contentLength < 1024 * 1024)
