@@ -8,7 +8,7 @@ namespace Oibi.Download
         /// <summary>
         /// TODO: remove?
         /// </summary>
-        public DotDownloder FileDownloader { get; set; }
+        public DotDownloader FileDownloader { get; set; }
 
         /// <summary>
         /// Remote resource

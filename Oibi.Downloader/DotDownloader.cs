@@ -8,7 +8,7 @@ using System.Threading.Tasks;
 
 namespace Oibi.Download
 {
-	public class DotDownloder
+	public class DotDownloader
 	{
 		/// <summary>
 		/// Suffix for multiparts download
@@ -33,7 +33,7 @@ namespace Oibi.Download
 		private HttpResponseMessage _responseMessage;
 
 		/// <summary>
-		/// Have Accept-Ranges header?
+		/// Has Accept-Ranges header?
 		/// </summary>
 		public bool SupportsAcceptRanges
 		{
@@ -101,7 +101,7 @@ namespace Oibi.Download
 			}
 		}
 
-		public DotDownloder(FileDownloadSettings settings)
+		public DotDownloader(FileDownloadSettings settings)
 		{
 			_uri = settings.RemoteResource;
 			_baseFileInfo = settings.LocalResource;

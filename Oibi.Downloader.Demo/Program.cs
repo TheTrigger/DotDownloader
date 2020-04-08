@@ -15,7 +15,7 @@ namespace Oibi.Downloader.Demo
                 LocalResource = new FileInfo(@"C:\Users\Fabio\Downloads\.downloader\100MB.bin")
             };
 
-            var dl = new DotDownloder(settings);
+            var dl = new DotDownloader(settings);
             var task = dl.DownloadAsync();
 
             do
