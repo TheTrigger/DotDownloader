@@ -9,7 +9,7 @@
     <Company>oibi.dev</Company>
     <Authors>f.fabrizi91@gmail.com</Authors>
     <Description>Stateless download manager</Description>
-    <PackageLicenseExpression>GPLv3</PackageLicenseExpression>
+    <PackageLicenseExpression></PackageLicenseExpression>
     <PackageProjectUrl>https://github.com/TheTrigger/DotDownloader</PackageProjectUrl>
     <RepositoryUrl>https://github.com/TheTrigger/DotDownloader</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
