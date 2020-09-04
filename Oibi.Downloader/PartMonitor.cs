@@ -1,119 +1,138 @@
 ﻿using Oibi.Download.Extensions;
 using System;
 using System.IO;
-using System.Net;
+using System.Net.Http;
+using System.Net.Http.Headers;
 using System.Threading;
 using System.Threading.Tasks;
 
 namespace Oibi.Download
 {
-	/// <summary>
-	/// Part downloader
-	/// </summary>
-	internal class PartMonitor : IDisposable
-	{
-		private readonly CancellationTokenSource _cancellationTokenSource;
+    /// <summary>
+    /// Part downloader
+    /// </summary>
+    internal class PartMonitor
+    {
+        private readonly DotDownloader _manager;
+        private readonly HttpClient _httpClient;
+        private readonly FileStream _fileStream;
 
-		internal readonly PartDownloadSettings _settings;
+        internal readonly PartDownloadSettings _settings;
 
-		internal PartMonitor(PartDownloadSettings settings)
-		{
-			_settings = settings;
-			_cancellationTokenSource = new CancellationTokenSource();
-		}
+        /// <summary>
+        /// Create new downloader that download things
+        /// </summary>
+        /// <param name="manager"></param>
+        /// <param name="settings"></param>
+        internal PartMonitor(DotDownloader manager, HttpClient httpClient, PartDownloadSettings settings)
+        {
+            _manager = manager;
+            _httpClient = httpClient;
+            _settings = settings;
+            _fileStream = new FileStream(_settings.OutFile.FullName, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.Read, FileStreamExtensions.FileStreamBufferLength, FileOptions.Asynchronous);
+        }
 
-		public Task CurrentTask { get; private set; }
+        public long BytesToDownload => _settings.OutFile.Length;
 
-		/// <summary>
-		/// Current reads till now
-		/// </summary>
-		//public double Progress => fileStream != null ? (1d * fileStream.Position / fileStream.Length) : 0;
+        public long OffsetFrom { get; private set; }
+        public long OffsetTo { get; private set; }
 
-		public long BytesToDownload => _settings.File.Length;
+        private long lastPosition;
+        private long lastLength;
 
-		public double Progress { get; private set; }
+        public double Progress
+        {
+            get
+            {
+                if (_fileStream is null)
+                    return default;
 
-		public double CurrentDownloadSpeed => throw new NotImplementedException();
+                return (1d * (_fileStream.CanRead ? _fileStream.Position : lastPosition) / lastLength);
+            }
+        }
 
-		public Task StartDownloadAsync()
-		{
-			return CurrentTask = DownloadAsync();
-		}
+        public FileStream GetFileStream() => _fileStream;
 
-		internal async Task DownloadAsync()
-		{
+        public Task StartDownloadAsync(CancellationToken cancellationToken) => DownloadAsync(cancellationToken);
+
+        internal async Task DownloadAsync(CancellationToken cancellationToken)
+        {
 #if DEBUG
-			Console.WriteLine($"STARTED {_settings.Uri.AbsoluteUri} is {_settings.File.Name}");
+            Console.WriteLine($"STARTED {_settings.Uri.AbsoluteUri} is {_settings.OutFile.Name}");
 #endif
-			using var fileStream = new FileStream(_settings.File.FullName, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.Read, Extensions.Extensions.FileStreamBufferLenght, FileOptions.Asynchronous);
-			using var webClient = new WebClient();
 
-			//webClient.Proxy = new WebProxy("http://proxyserver:80/", true);
-			//webClient.Proxy.Credentials = new NetworkCredential("user", "password");
-			//webClient.Headers["User-Agent"] = "Mozilla/4.0 (compatible; MSIE 8.0; Windows NT 6.1)";
+            lastPosition = default;
+            lastLength = _fileStream.Length;
 
-			if (_settings.FileDownloader.SupportsAcceptRanges) // not AsMultiPart so we can resume dl - WTF?
-			{
-				_ = await fileStream.PositionToNonZeroOffsetAsync(); // resume (0x00 check from end)
-				if (fileStream.Position == fileStream.Length)
-				{
-					//Console.WriteLine($"SKIPPED - DOWNLOAD ALREADY COMPLETED: {_settings.Uri.AbsoluteUri}");
-					return;
-				}
+            var request = new HttpRequestMessage(HttpMethod.Get, _settings.Uri);
+            if (_manager.SupportsAcceptRanges) // not AsMultiPart so we can resume dl - WTF?
+            {
+                _ = await _fileStream.PositionToNonZeroOffsetAsync(); // resume (0x00 check from end)
+                if (_fileStream.Position == _fileStream.Length)
+                {
+                    //Console.WriteLine($"SKIPPED - DOWNLOAD ALREADY COMPLETED: {_settings.Uri.AbsoluteUri}");
+                    lastPosition = _fileStream.Position;
+                    return;
+                }
 
-				webClient.Headers.Add("Range", string.Format("bytes={0}-{1}", _settings.StartOffset + fileStream.Position, _settings.StartOffset + fileStream.Length));
-			}
+                OffsetFrom = _settings.RemoteOffset + _fileStream.Position;
+                OffsetTo = _settings.RemoteOffset + _fileStream.Length;
+                request.Headers.Range = new RangeHeaderValue(OffsetFrom, OffsetTo);
+            }
 
-			using var webStream = await webClient.OpenReadTaskAsync(_settings.Uri);
+            var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+            response.EnsureSuccessStatusCode();
 
-			// TODO: improve content-length read - handle null?
-			//var bytesTotal = Convert.ToInt64(webClient.ResponseHeaders["Content-Length"]);
+            var dataStream = await response.Content.ReadAsStreamAsync();
 
-			//if (_bytesTotal != (_settings.StartOffset + fileStream.Length) - (_settings.StartOffset + fileStream.Position))
-			//throw new Exception("What the hell are you doing?");
+            if (response.Content.Headers.ContentLength - 1 != response.Content.Headers.ContentRange.To - response.Content.Headers.ContentRange.From)
+                throw new AccessViolationException($"{nameof(HttpContentHeaders.ContentLength)} and {nameof(HttpContentHeaders.ContentRange)} does not match!");
 
-			int bytesRead;
-			long bytesReadComplete = 0;
+            if (response.Content.Headers.ContentLength - 1 != _fileStream.Length - _fileStream.Position)
+                throw new FileLoadException($"{nameof(HttpContentHeaders.ContentLength)} is not equal to file length!");
 
-			// TODO: new Memory<byte>
-			var buffer = new byte[32768];
+#if DEBUG
+            await CopyStream(dataStream, _fileStream, cancellationToken);
+#else
+            await dataStream.CopyToAsync(_fileStream, 32768, cancellationToken);
+#endif
+        }
 
-			//var stopWatch = new Stopwatch();
 
-			while (!_cancellationTokenSource.Token.IsCancellationRequested)
-			{
-				//stopWatch.Restart();
+#if DEBUG
 
-				bytesRead = await webStream.ReadAsync(buffer, 0, buffer.Length, _cancellationTokenSource.Token);
-				if (bytesRead == 0)
-					break;
+        /*      Implement this to get dl speed ? */
+        internal async Task CopyStream(Stream input, Stream output, CancellationToken cancellationToken)
+        {
+            int bytesRead;
+            long bytesReadComplete = default;
 
-				bytesReadComplete += bytesRead;
+            //var stopWatch = new Stopwatch();
+            // TODO: new Memory<byte>
+            var buffer = new byte[32768];
+            while (!cancellationToken.IsCancellationRequested)
+            {
+                bytesRead = await input.ReadAsync(buffer, 0, buffer.Length, cancellationToken);
+                if (bytesRead == 0)
+                    break;
 
-				await fileStream.WriteAsync(buffer, 0, bytesRead, _cancellationTokenSource.Token);
+                bytesReadComplete += bytesRead;
 
-				// lazy cause fileStream have to free resource, so you have to implement IDisposable
-				Progress = (1d * fileStream.Position / fileStream.Length);
+                await output.WriteAsync(buffer, 0, bytesRead, cancellationToken);
+                lastPosition = output.Position;
 
-				//stopWatch.Stop();
-				//if (stopWatch.ElapsedMilliseconds > 0)
-				// _speed?.Report(bytesRead * 8 / stopWatch.ElapsedMilliseconds);
-			}
-		}
+#if DEBUG
+                await output.FlushAsync(cancellationToken);
+#endif
 
-		internal async Task PauseAsync() => throw new NotImplementedException();
+                //stopWatch.Stop();
+                //if (stopWatch.ElapsedMilliseconds > 0)
+                // _speed?.Report(bytesRead * 8 / stopWatch.ElapsedMilliseconds);
+                //stopWatch.Restart();
+            }
 
-		internal async Task ResumeAsync() => throw new NotImplementedException();
-
-		internal void Abort()
-		{
-			if (!_cancellationTokenSource.IsCancellationRequested)
-				_cancellationTokenSource.Cancel();
-		}
-
-		public void Dispose()
-		{
-			_cancellationTokenSource.Dispose();
-		}
-	}
+            await output.FlushAsync(cancellationToken);
+        }
+#endif
+    }
 }

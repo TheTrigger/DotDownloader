@@ -4,23 +4,26 @@ using System.Threading.Tasks;
 
 namespace Oibi.Download.Extensions
 {
-    public static partial class Extensions
+    public static class FileStreamExtensions
     {
-        internal const int FileStreamBufferLenght = 33554432; // 33 mb
+        /// <summary>
+        /// 33MB is good enough
+        /// </summary>
+        internal const int FileStreamBufferLength = 33554432;
 
         /// <summary>
-        /// Find first zero from end
+        /// Resume position findinf the first zero from the end
         /// </summary>
         /// <param name="fileStream"></param>
-        /// <returns>found position</returns>
+        /// <returns>position offset</returns>
         public static async Task<long> PositionToNonZeroOffsetAsync(this FileStream fileStream)
         {
-            var buffer = new byte[FileStreamBufferLenght];
+            var buffer = new byte[FileStreamBufferLength];
             long totalBytesRead = 0;
 
             while (totalBytesRead < fileStream.Length)
             {
-                int bytesToRead = (int)(fileStream.Length <= FileStreamBufferLenght ? fileStream.Length : FileStreamBufferLenght);
+                int bytesToRead = (int)(fileStream.Length <= FileStreamBufferLength ? fileStream.Length : FileStreamBufferLength);
 
                 // TODO: ottimizza -> sovrapposizione lettura verso l'ultimo blocco ... Math.Max==lazy
                 fileStream.Position = Math.Max(default, fileStream.Length - totalBytesRead - bytesToRead);

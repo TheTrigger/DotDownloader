@@ -1,6 +1,8 @@
 ﻿using Oibi.Download;
 using System;
 using System.IO;
+using System.Net.Http.Headers;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace Oibi.Downloader.Demo
@@ -11,20 +13,21 @@ namespace Oibi.Downloader.Demo
         {
             var settings = new FileDownloadSettings
             {
-                RemoteResource = new Uri("https://speed.hetzner.de/100MB.bin"),
-                LocalResource = new FileInfo(@"C:\Users\Fabio\Downloads\.downloader\100MB.bin")
+                RemoteResource = new Uri("https://www.gigainlab.com/test.iso"),
+                LocalResource = new FileInfo(@"C:\Users\Fabio\Downloads\.downloader\alp.iso")
             };
 
-            var dl = new DotDownloader(settings);
-            var task = dl.DownloadAsync();
+            var dl = new DotDownloader(settings, null, new AuthenticationHeaderValue("Bearer", "hello"));
+
+            var task = dl.DownloadAsync(CancellationToken.None);
 
             do
             {
                 await Task.Delay(111);
-                Console.Write($"Progress: {dl.Progress * 100:0.00}%\r");
-            } while (dl.Progress != 1d);
+                Console.Write($"Progress: {dl.Progress * 100:00.00}%\r");
+            } while (dl.IsDownloading);
 
-            Console.WriteLine("DOWNLOAD COMPLETED");
+            Console.WriteLine("\nDOWNLOAD COMPLETED");
 
             await task;
         }

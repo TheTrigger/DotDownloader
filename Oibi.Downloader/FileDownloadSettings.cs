@@ -10,6 +10,6 @@ namespace Oibi.Download
     {
         public Uri RemoteResource { get; set; }
         public FileInfo LocalResource { get; set; }
-        public int Priority { get; set; } = 0;
+        public int Priority => throw new NotImplementedException();
     }
 }

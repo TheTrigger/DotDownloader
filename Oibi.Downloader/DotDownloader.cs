@@ -1,251 +1,311 @@
 ﻿using Oibi.Download.Extensions;
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Net.Http;
+using System.Net.Http.Headers;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace Oibi.Download
 {
-	public class DotDownloader
-	{
-		/// <summary>
-		/// Suffix for multiparts download
-		/// </summary>
-		private const string NameMultiPartSuffix = ".part-{0}.tmp";
+    public class DotDownloader
+    {
+        //private readonly CancellationTokenSource _cancellationTokenSource;
 
-		private readonly Uri _uri;
+        /// <summary>
+        /// Suffix for multiparts download
+        /// </summary>
+        private const string NameMultiPartSuffix = ".part-{0}.tmp";
 
-		/// <summary>
-		/// File to create
-		/// </summary>
-		private readonly FileInfo _baseFileInfo;
+        private readonly Uri _uri;
+        private readonly HttpClient _httpClient;
 
-		/// <summary>
-		/// Parts (temporary parts files)
-		/// </summary>
-		private readonly IList<FileInfo> _fileParts = new List<FileInfo>();
+        // httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "Your Oauth token");
 
-		/// <summary>
-		/// Check response. <see cref="https://developer.mozilla.org/en-US/docs/Web/HTTP/Basics_of_HTTP/MIME_types"/>
-		/// </summary>
-		private HttpResponseMessage _responseMessage;
+        /// <summary>
+        /// File to create
+        /// </summary>
+        private readonly FileInfo _baseFileInfo;
 
-		/// <summary>
-		/// Has Accept-Ranges header?
-		/// </summary>
-		public bool SupportsAcceptRanges
-		{
-			get
-			{
-				if (_responseMessage is null)
-					throw new NotSupportedException($"Please call {nameof(CheckHeadAsync)} first");
+        /// <summary>
+        /// Parts (temporary parts files)
+        /// </summary>
+        private readonly IList<FileInfo> _fileParts = new List<FileInfo>();
 
-				return _responseMessage.SupportsAcceptRanges();
-			}
-		}
+        /// <summary>
+        /// Check response. <see cref="https://developer.mozilla.org/en-US/docs/Web/HTTP/Basics_of_HTTP/MIME_types"/>
+        /// </summary>
+        private HttpResponseMessage _responseMessage;
 
-		/// <summary>
-		/// Default multipart value
-		/// </summary>
-		private int _asMultiPart = 4;
+        /// <summary>
+        /// Has Accept-Ranges header?
+        /// </summary>
+        public bool SupportsAcceptRanges
+        {
+            get
+            {
+                if (_responseMessage is null)
+                    throw new NotSupportedException($"Please call {nameof(RequestHeadAsync)} first");
 
-		/// <summary>
-		/// Can resume download?
-		/// </summary>
-		private bool _canResume = false;
+                return _responseMessage.SupportsAcceptRanges();
+            }
+        }
 
-		/// <summary>
-		/// Expected content-length
-		/// </summary>
-		private long? _contentLength => _responseMessage.ContentLenght();
+        /// <summary>
+        /// Default multipart value
+        /// </summary>
+        private int _asMultiPart = 4;
 
-		/// <summary>
-		/// Current download tasks
-		/// </summary>
-		private IList<PartMonitor> _downloadMonitors;
+        /// <summary>
+        /// Can resume download?
+        /// </summary>
+        private bool _canResume = false;
 
-		/// <summary>
-		/// TODO: nullable?
-		/// </summary>
-		public double Progress
-		{
-			get
-			{
-				if (!_contentLength.HasValue || _downloadMonitors is null)
-					return default;
+        /// <summary>
+        /// Expected content-length
+        /// </summary>
+        private long? ContentLength => _responseMessage.ContentLength();
 
-				double progress = default;
-				foreach (var dm in _downloadMonitors)
-					progress += dm.Progress * (1d * dm.BytesToDownload / _contentLength.Value);
+        /// <summary>
+        /// Current download tasks
+        /// </summary>
+        private readonly ConcurrentBag<PartMonitor> _downloadMonitors = new ConcurrentBag<PartMonitor>();
 
-				return Math.Round(progress, 4);
-			}
-		}
+        /// <summary>
+        /// TODO: nullable?
+        /// </summary>
+        public double Progress
+        {
+            get
+            {
+                if (!ContentLength.HasValue)
+                    return default;
 
-		/// <summary>
-		/// Multipart download. Default = 1
-		/// </summary>
-		public int AsMultiPart
-		{
-			get => SupportsAcceptRanges ? _asMultiPart : 1;
-			set
-			{
-				if (value < 1)
-					throw new OverflowException($"{nameof(AsMultiPart)} cannot be less than 1");
-				if (value > 16)
-					throw new OverflowException($"{nameof(AsMultiPart)} cannot be bigger than 16");
+                double progress = default;
+                progress = _downloadMonitors.Sum(s => s.Progress * (1d * s.BytesToDownload / ContentLength.Value));
 
-				_asMultiPart = value;
-			}
-		}
+                return Math.Round(progress, 4);
+            }
+        }
 
-		public DotDownloader(FileDownloadSettings settings)
-		{
-			_uri = settings.RemoteResource;
-			_baseFileInfo = settings.LocalResource;
-		}
+        /// <summary>
+        /// Is download active
+        /// </summary>
+        public bool IsDownloading { get; private set; }
 
-		/// <summary>
-		/// Check resource - HEAD request
-		/// </summary>
-		private async Task<bool> CheckHeadAsync()
-		{
-			using var client = new HttpClient();
-			var response = new HttpRequestMessage(HttpMethod.Head, _uri);
+        /// <summary>
+        /// Multipart download. Default = 1
+        /// </summary>
+        public int AsMultiPart
+        {
+            get => SupportsAcceptRanges ? _asMultiPart : 1;
+            set
+            {
+                if (value < 1)
+                    throw new OverflowException($"{nameof(AsMultiPart)} cannot be less than 1");
+                if (value > 16)
+                    throw new OverflowException($"{nameof(AsMultiPart)} cannot be bigger than 16");
 
-			_responseMessage = await client.SendAsync(response);
+                _asMultiPart = value;
+            }
+        }
 
-			return _responseMessage.IsSuccessStatusCode;
-		}
+        /// <summary>
+        /// Instantiate a download manager
+        /// </summary>
+        /// <param name="settings"></param>
+        /// <param name="authentication">eg: <code>new AuthenticationHeaderValue("Bearer", "Your Oauth token")</code></param>
+        public DotDownloader(FileDownloadSettings settings, string userAgent, AuthenticationHeaderValue authentication)
+        {
+            _uri = settings.RemoteResource;
+            _baseFileInfo = settings.LocalResource;
 
-		/// <summary>
-		/// Check if multi-part is valid. Set <see cref="AsMultiPart"/>
-		/// </summary>
-		private async Task CheckMultiPartAsync()
-		{
-			var files = Directory.GetFiles(_baseFileInfo.Directory.FullName, $"{_baseFileInfo.Name}{string.Format(NameMultiPartSuffix, "*")}", SearchOption.TopDirectoryOnly);
-			_canResume = files.Length > 0;
+            _httpClient = new HttpClient();
+            _httpClient.DefaultRequestHeaders.Authorization ??= authentication;
+            _httpClient.DefaultRequestHeaders.Add("User-Agent", userAgent ?? $"Mozilla/5.0 ({Environment.OSVersion.Platform}; {Environment.OSVersion.Version}; {Environment.OSVersion.ServicePack}) Oibi.Downloader {Environment.Version}");
 
-			if (!_responseMessage.SupportsAcceptRanges())
-			{
-				// TODO: valuta cosa fare
-				if (files.Length > 0)
-				{
-					throw new NotSupportedException($"Accept-Ranges not supported but found multiple parts on disk ({files.Length})");
-				}
+            Directory.CreateDirectory(_baseFileInfo.Directory.FullName);
+        }
 
-				AsMultiPart = 1;
-				return;
-			}
+        public DotDownloader(FileDownloadSettings settings, AuthenticationHeaderValue authentication) : this(settings, null, authentication)
+        {
+        }
 
-			if (_canResume)
-				AsMultiPart = files.Length;
-		}
+        public DotDownloader(FileDownloadSettings settings, string userAgent) : this(settings, userAgent, null)
+        {
+        }
 
-		public async Task VerifyAsync()
-		{
-			await CheckHeadAsync().ConfigureAwait(false);
-			await CheckMultiPartAsync().ConfigureAwait(false);
+        public DotDownloader(FileDownloadSettings settings) : this(settings, null, null)
+        {
+        }
 
-			_downloadMonitors = new List<PartMonitor>(AsMultiPart);
+        /// <summary>
+        /// Check resource - HEAD request
+        /// </summary>
+        private Task<HttpResponseMessage> RequestHeadAsync(CancellationToken cancellationToken)
+        {
+            var request = new HttpRequestMessage(HttpMethod.Head, _uri);
+            return _httpClient.SendAsync(request, cancellationToken);
+        }
 
-			if (_contentLength is null)
-			{
-				throw new NotImplementedException("What to do? no content length");
-			}
+        /// <summary>
+        /// Check if multi-part is valid. Set <see cref="AsMultiPart"/>
+        /// </summary>
+        private IEnumerable<FileInfo> CheckResumeDiskFiles()
+        {
+            var files = Directory.GetFiles(_baseFileInfo.Directory.FullName, $"{_baseFileInfo.Name}{string.Format(NameMultiPartSuffix, "*")}", SearchOption.TopDirectoryOnly);
+            _canResume = files.Length > 0;
 
-			// do not split under 1mb
-			if (_contentLength < 1024 * 1024)
-			{
-				AsMultiPart = 1;
-			}
+            if (!_responseMessage.SupportsAcceptRanges())
+            {
+                // TODO: valuta cosa fare
+                if (files.Length > 0)
+                {
+                    throw new NotSupportedException($"Accept-Ranges not supported but found multiple parts on disk ({files.Length})");
+                }
 
-			var singleSize = (_contentLength / AsMultiPart).Value;
-			var rest = (_contentLength % AsMultiPart).Value;
+                AsMultiPart = 1;
+            }
+            else
+            {
+                if (_canResume)
+                {
+                    AsMultiPart = files.Length;
+                }
+            }
 
-			if (singleSize == 0)
-				throw new ArgumentOutOfRangeException($"{nameof(_contentLength)} cannot be zero");
+            return files.Select(s => new FileInfo(s));
+        }
 
-			for (int i = 1; i <= AsMultiPart; i++)
-			{
-				var path = string.Format($"{_baseFileInfo.FullName}{NameMultiPartSuffix}", i);
-				using var fileStream = new FileStream(path, FileMode.OpenOrCreate, FileAccess.Write, FileShare.ReadWrite); //, Extensions.Extensions.FileStreamBufferLenght, FileOptions.Asynchronous);
-				long start = default;
+        private async Task VerifyAsync(CancellationToken cancellationToken)
+        {
+            _responseMessage = await RequestHeadAsync(cancellationToken).ConfigureAwait(false);
+            var files = CheckResumeDiskFiles();
 
-				if (i == 1)
-				{
-					start = 0;
-					fileStream.SetLength(singleSize + rest - 1);
-				}
-				else
-				{
-					start = _fileParts.Sum(f => f.Length + 1);
-					fileStream.SetLength(singleSize - 1);
-				}
+            if (ContentLength is null)
+                throw new NotImplementedException("Not set content length");
 
-				// TODO: reuse same stream?
-				await fileStream.DisposeAsync();
+            if (ContentLength.Value == default)
+                throw new ArgumentException(message: "Zero content length", paramName: nameof(ContentLength));
 
-				var fi = new FileInfo(path);
-				_fileParts.Add(fi);
+            // do not split under 1mb
+            if (ContentLength < 1024 * 1024)
+            {
+                AsMultiPart = 1;
+            }
 
-				var settings = new PartDownloadSettings
-				{
-					FileDownloader = this,
-					Uri = _uri,
-					File = fi,
-					StartOffset = start,
-				};
+            var singleSize = (ContentLength / AsMultiPart).Value;
+            var rest = (ContentLength % AsMultiPart).Value;
 
-				var monitor = new PartMonitor(settings);
-				_downloadMonitors.Add(monitor);
-			}
-		}
+            if (singleSize == default)
+                throw new ArgumentOutOfRangeException(message: "Content length cannot be zero", paramName: nameof(ContentLength));
 
-		public async Task DownloadAsync()
-		{
-			await VerifyAsync().ConfigureAwait(false);
+            _downloadMonitors.Clear();
+            for (int i = 1; i <= AsMultiPart; i++)
+            {
+                var path = string.Format($"{_baseFileInfo.FullName}{NameMultiPartSuffix}", i);
+                using var fileStream = new FileStream(path, FileMode.OpenOrCreate, FileAccess.Write, FileShare.ReadWrite); //, Extensions.Extensions.FileStreamBufferLength, FileOptions.Asynchronous);
+                long start = default;
 
-			foreach (var m in _downloadMonitors)
-				_ = m.StartDownloadAsync().ConfigureAwait(false);
+                if (i == 1)
+                {
+                    start = 0;
+                    fileStream.SetLength(singleSize + rest - 1);
+                }
+                else
+                {
+                    start = _fileParts.Sum(f => f.Length + 1);
+                    fileStream.SetLength(singleSize - 1);
+                }
 
-			Task.WaitAll(_downloadMonitors.Select(s => s.CurrentTask).ToArray());
+                await fileStream.DisposeAsync();
 
-			if (!_downloadMonitors.All(t => t.CurrentTask.IsCompletedSuccessfully))
-				throw new AggregateException(_downloadMonitors.Select(s => s.CurrentTask.Exception));
+                var file = new FileInfo(path);
+                _fileParts.Add(file);
 
-			await JoinParts().ConfigureAwait(false);
-		}
+                var settings = new PartDownloadSettings
+                {
+                    Uri = _uri,
+                    OutFile = file,
+                    RemoteOffset = start,
+                };
 
-		public void Abort()
-		{
-			foreach (var m in _downloadMonitors)
-				m.Abort();
-		}
+                var monitor = new PartMonitor(this, _httpClient, settings);
 
-		/// <summary>
-		/// Join splitted downloads
-		/// </summary>
-		/// <returns></returns>
-		private async Task JoinParts()
-		{
-			// TODO: if single file just rename 😉
+                _downloadMonitors.Add(monitor);
+            }
+        }
 
-			using var mainFileStream = new FileStream(_baseFileInfo.FullName, FileMode.CreateNew, FileAccess.Write);
+        /// <summary>
+        /// Start download processes
+        /// </summary>
+        public async Task DownloadAsync(CancellationToken cancellationToken)
+        {
+            try
+            {
+                if (IsDownloading)
+                    throw new Exception("Download already started");
 
-			var parts = _fileParts.OrderBy(o => o.Name);
-			foreach (var part in parts)
-			{
-#if DEBUG
-				using var fileStream = new FileStream(part.FullName, FileMode.Open, FileAccess.Read, FileShare.None, Extensions.Extensions.FileStreamBufferLenght);
-#else
-                using var fileStream = new FileStream(part.FullName, FileMode.Open, FileAccess.Read, FileShare.None, Extensions.Extensions.FileStreamBufferLenght , FileOptions.DeleteOnClose);
+                IsDownloading = true;
+                await VerifyAsync(cancellationToken).ConfigureAwait(false);
+                var tasks = _downloadMonitors.Select(s => s.StartDownloadAsync(cancellationToken));
+                await Task.WhenAll(tasks);
+                await ConcatFilesAsync(cancellationToken).ConfigureAwait(false);
+            }
+            finally
+            {
+                IsDownloading = false;
+            }
+        }
+
+        /// <summary>
+        /// Start download process
+        /// </summary>
+        public Task DownloadAsync() => DownloadAsync(CancellationToken.None);
+
+        /// <summary>
+        /// Join splitted downloads
+        /// </summary>
+        /// <returns></returns>
+        private async Task ConcatFilesAsync(CancellationToken cancellationToken)
+        {
+            // TODO: if single file just rename 😉
+
+            using var outStream = new FileStream(_baseFileInfo.FullName, FileMode.CreateNew, FileAccess.Write);
+
+            foreach (var dm in _downloadMonitors)
+            {
+                using var stream = dm.GetFileStream();
+                stream.Position = default;
+
+                outStream.Position = dm._settings.RemoteOffset;
+                await stream.CopyToAsync(outStream, cancellationToken);
+
+                await stream.FlushAsync(cancellationToken);
+                stream.Close();
+                await stream.DisposeAsync();
+
+#if !DEBUG
+                File.Delete(stream.Name);
 #endif
-				// TODO: maybe a day, a progress report
-				await fileStream.CopyToAsync(mainFileStream);
-			}
-		}
-	}
+            }
+
+            /*
+            var parts = _fileParts.OrderBy(o => o.Name);
+            foreach (var part in parts)
+            {
+#if DEBUG
+                using var fileStream = new FileStream(part.FullName, FileMode.Open, FileAccess.Read, FileShare.None, FileStreamExtensions.FileStreamBufferLength);
+#else
+                using var fileStream = new FileStream(part.FullName, FileMode.Open, FileAccess.Read, FileShare.None, FileStreamExtensions.FileStreamBufferLength , FileOptions.DeleteOnClose);
+#endif
+                // TODO: maybe a day, a progress report
+                await fileStream.CopyToAsync(mainFileStream, cancellationToken);
+            }
+            */
+        }
+    }
 }

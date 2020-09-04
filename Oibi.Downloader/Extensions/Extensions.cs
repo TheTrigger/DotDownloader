@@ -3,7 +3,7 @@ using System.Linq;
 
 namespace Oibi.Download.Extensions
 {
-    public static partial class Extensions
+    public static class UriExtensions
     {
         public static Uri GetParentUri(this Uri uri)
         {

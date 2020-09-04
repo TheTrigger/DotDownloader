@@ -4,7 +4,7 @@
     <TargetFramework>netstandard2.1</TargetFramework>
     <RootNamespace>Oibi.Download</RootNamespace>
     <AssemblyName>Oibi.Downloader</AssemblyName>
-    <Version>0.0.2-alpha</Version>
+    <Version>0.0.3-alpha</Version>
     <Copyright>f.fabrizi91@gmail.com</Copyright>
     <Company>oibi.dev</Company>
     <Authors>f.fabrizi91@gmail.com</Authors>
@@ -15,6 +15,10 @@
     <RepositoryType>git</RepositoryType>
     <PackageTags>download</PackageTags>
     <PackageReleaseNotes>initial beta</PackageReleaseNotes>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
+    <DefineConstants>DEBUG;TRACE</DefineConstants>
   </PropertyGroup>
 
 </Project>

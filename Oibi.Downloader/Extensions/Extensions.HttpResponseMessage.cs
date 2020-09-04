@@ -2,7 +2,7 @@
 
 namespace Oibi.Download.Extensions
 {
-    public static partial class Extensions
+    public static class HttpResponseMessageExtensions
     {
         public static bool SupportsAcceptRanges(this HttpResponseMessage httpResponseMessage)
         {
@@ -21,7 +21,7 @@ namespace Oibi.Download.Extensions
             return false;
         }
 
-        public static long? ContentLenght(this HttpResponseMessage httpResponseMessage)
+        public static long? ContentLength(this HttpResponseMessage httpResponseMessage)
         {
             // TODO: handle no declared content length
             return httpResponseMessage?.Content.Headers.ContentLength;

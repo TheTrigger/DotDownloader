@@ -3,13 +3,11 @@ using System.IO;
 
 namespace Oibi.Download
 {
+    /// <summary>
+    /// Settings about download / split download
+    /// </summary>
     internal sealed class PartDownloadSettings
     {
-        /// <summary>
-        /// TODO: remove?
-        /// </summary>
-        public DotDownloader FileDownloader { get; set; }
-
         /// <summary>
         /// Remote resource
         /// </summary>
@@ -18,16 +16,11 @@ namespace Oibi.Download
         /// <summary>
         /// File (part) to write
         /// </summary>
-        public FileInfo File { get; set; }
+        public FileInfo OutFile { get; set; }
 
         /// <summary>
-        /// Remote offet to require/resume download
+        /// Remote offset to resume download
         /// </summary>
-        public long StartOffset { get; set; }
-
-        /// <summary>
-        /// Download progress
-        /// </summary>
-        public Progress<float> Progress { get; set; }
+        public long RemoteOffset { get; set; }
     }
 }
