@@ -1,4 +1,5 @@
 ﻿using Oibi.Download.Extensions;
+using Oibi.Download.Models.Emuns;
 using System;
 using System.IO;
 using System.Net.Http;
@@ -40,16 +41,14 @@ namespace Oibi.Download
         private long lastPosition;
         private long lastLength;
 
-        private bool finished = false;
+        public Status Status { get; private set; }
+
         public double Progress
         {
             get
             {
                 if (_fileStream is null)
                     return default;
-
-                if (finished)
-                    return 1;
 
                 return (1d * (_fileStream.CanRead ? _fileStream.Position : lastPosition) / lastLength);
             }
@@ -64,13 +63,14 @@ namespace Oibi.Download
 #if DEBUG
             Console.WriteLine($"STARTED {_settings.Uri.AbsoluteUri} is {_settings.OutFile.Name}");
 #endif
-
             lastPosition = default;
             lastLength = _fileStream.Length;
 
             var request = new HttpRequestMessage(HttpMethod.Get, _settings.Uri);
             if (_manager.SupportsAcceptRanges) // not AsMultiPart so we can resume dl - WTF?
             {
+                Status = Status.Resuming;
+
                 _ = await _fileStream.PositionToNonZeroOffsetAsync(); // resume (0x00 check from end)
                 if (_fileStream.Position == _fileStream.Length)
                 {
@@ -83,6 +83,8 @@ namespace Oibi.Download
                 OffsetTo = _settings.RemoteOffset + _fileStream.Length;
                 request.Headers.Range = new RangeHeaderValue(OffsetFrom, OffsetTo);
             }
+
+            Status = Status.Downloading;
 
             var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
             response.EnsureSuccessStatusCode();
@@ -100,13 +102,13 @@ namespace Oibi.Download
 #else
             await dataStream.CopyToAsync(_fileStream, 32768, cancellationToken);
 #endif
-            finished = true;
+            Status = Status.Done;
         }
-
 
 #if DEBUG
 
         /*      Implement this to get dl speed ? */
+
         internal async Task CopyStream(Stream input, Stream output, CancellationToken cancellationToken)
         {
             int bytesRead;
@@ -138,6 +140,7 @@ namespace Oibi.Download
 
             await output.FlushAsync(cancellationToken);
         }
+
 #endif
     }
 }

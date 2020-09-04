@@ -10,15 +10,20 @@
         /// <summary>
         /// Search for file offset to resume download
         /// </summary>
-        SearchingOffset,
+        Resuming,
 
         /// <summary>
         /// Just downloading
         /// </summary>
-        NetworkDownloading,
+        Downloading,
 
         /// <summary>
-        /// Done
+        /// Joining files
+        /// </summary>
+        Joining,
+
+        /// <summary>
+        /// All is fine
         /// </summary>
         Done,
     }
