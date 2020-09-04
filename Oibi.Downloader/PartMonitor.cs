@@ -40,12 +40,16 @@ namespace Oibi.Download
         private long lastPosition;
         private long lastLength;
 
+        private bool finished = false;
         public double Progress
         {
             get
             {
                 if (_fileStream is null)
                     return default;
+
+                if (finished)
+                    return 1;
 
                 return (1d * (_fileStream.CanRead ? _fileStream.Position : lastPosition) / lastLength);
             }
@@ -96,6 +100,7 @@ namespace Oibi.Download
 #else
             await dataStream.CopyToAsync(_fileStream, 32768, cancellationToken);
 #endif
+            finished = true;
         }
 
 

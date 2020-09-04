@@ -12,6 +12,7 @@ A small stateless utility to download remote files without external dependencies
 - [x] progress
 - [x] abort (`CancellationToken`)
 - [x] stateless
+- [x] auth header
 - [ ] speed meter
 - [ ] pause/resume
 - [ ] proxy pool

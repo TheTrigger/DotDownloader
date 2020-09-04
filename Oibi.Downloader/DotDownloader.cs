@@ -5,7 +5,6 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Net.Http;
-using System.Net.Http.Headers;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -57,7 +56,7 @@ namespace Oibi.Download
         /// <summary>
         /// Default multipart value
         /// </summary>
-        private int _asMultiPart = 4;
+        private int _asMultiPart = 2;
 
         /// <summary>
         /// Can resume download?
@@ -116,30 +115,14 @@ namespace Oibi.Download
         /// <summary>
         /// Instantiate a download manager
         /// </summary>
-        /// <param name="settings"></param>
-        /// <param name="authentication">eg: <code>new AuthenticationHeaderValue("Bearer", "Your Oauth token")</code></param>
-        public DotDownloader(FileDownloadSettings settings, string userAgent, AuthenticationHeaderValue authentication)
+        public DotDownloader(FileDownloadSettings settings, HttpClient httpClient)
         {
             _uri = settings.RemoteResource;
             _baseFileInfo = settings.LocalResource;
 
-            _httpClient = new HttpClient();
-            _httpClient.DefaultRequestHeaders.Authorization ??= authentication;
-            _httpClient.DefaultRequestHeaders.Add("User-Agent", userAgent ?? $"Mozilla/5.0 ({Environment.OSVersion.Platform}; {Environment.OSVersion.Version}; {Environment.OSVersion.ServicePack}) Oibi.Downloader {Environment.Version}");
+            _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
 
             Directory.CreateDirectory(_baseFileInfo.Directory.FullName);
-        }
-
-        public DotDownloader(FileDownloadSettings settings, AuthenticationHeaderValue authentication) : this(settings, null, authentication)
-        {
-        }
-
-        public DotDownloader(FileDownloadSettings settings, string userAgent) : this(settings, userAgent, null)
-        {
-        }
-
-        public DotDownloader(FileDownloadSettings settings) : this(settings, null, null)
-        {
         }
 
         /// <summary>
@@ -250,6 +233,7 @@ namespace Oibi.Download
                     throw new Exception("Download already started");
 
                 IsDownloading = true;
+                _fileParts.Clear();
                 await VerifyAsync(cancellationToken).ConfigureAwait(false);
                 var tasks = _downloadMonitors.Select(s => s.StartDownloadAsync(cancellationToken));
                 await Task.WhenAll(tasks);
@@ -272,16 +256,14 @@ namespace Oibi.Download
         /// <returns></returns>
         private async Task ConcatFilesAsync(CancellationToken cancellationToken)
         {
-            // TODO: if single file just rename 😉
-
             using var outStream = new FileStream(_baseFileInfo.FullName, FileMode.CreateNew, FileAccess.Write);
 
-            foreach (var dm in _downloadMonitors)
+            foreach (var pm in _downloadMonitors)
             {
-                using var stream = dm.GetFileStream();
+                using var stream = pm.GetFileStream();
                 stream.Position = default;
 
-                outStream.Position = dm._settings.RemoteOffset;
+                outStream.Position = pm._settings.RemoteOffset;
                 await stream.CopyToAsync(outStream, cancellationToken);
 
                 await stream.FlushAsync(cancellationToken);
@@ -292,20 +274,6 @@ namespace Oibi.Download
                 File.Delete(stream.Name);
 #endif
             }
-
-            /*
-            var parts = _fileParts.OrderBy(o => o.Name);
-            foreach (var part in parts)
-            {
-#if DEBUG
-                using var fileStream = new FileStream(part.FullName, FileMode.Open, FileAccess.Read, FileShare.None, FileStreamExtensions.FileStreamBufferLength);
-#else
-                using var fileStream = new FileStream(part.FullName, FileMode.Open, FileAccess.Read, FileShare.None, FileStreamExtensions.FileStreamBufferLength , FileOptions.DeleteOnClose);
-#endif
-                // TODO: maybe a day, a progress report
-                await fileStream.CopyToAsync(mainFileStream, cancellationToken);
-            }
-            */
         }
     }
 }
